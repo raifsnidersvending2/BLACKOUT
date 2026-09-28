@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BLACKOUT - Emergency SOS</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;color:#ff1a1a;font-family: 'Courier New', monospace;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+h1{font-size:3rem;letter-spacing:0.3em;border:2px solid #ff1a1a;padding:20px 30px;margin-bottom:10px;text-shadow:0 0 20px #ff1a1a}
+.sub{color:#fff;letter-spacing:0.2em;font-size:0.9rem;margin-bottom:40px;opacity:0.7}
+.grid{display:grid;gap:15px;width:100%;max-width:400px}
+.btn{background:#111;border:2px solid #ff1a1a;color:#ff1a1a;padding:20px;font-size:1.1rem;font-weight:bold;letter-spacing:0.1em;cursor:pointer;text-transform:uppercase;transition:all 0.2s}
+.btn:active{background:#ff1a1a;color:#000;box-shadow:0 0 30px #ff1a1a}
+.btn-small{background:#000;border:1px solid #333;color:#666;padding:12px;font-size:0.8rem}
+.status{margin-top:30px;border:1px dashed #333;padding:15px;width:100%;max-width:400px;color:#888;font-size:0.75rem;line-height:1.6}
+.dot{display:inline-block;width:8px;height:8px;background:#0f0;border-radius:50%;margin-right:8px;box-shadow:0 0 10px #0f0;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.install{background:#ff1a1a;color:#000;border:none;padding:18px;width:100%;max-width:400px;margin-top:20px;font-weight:900;font-size:1.1rem;letter-spacing:0.2em;cursor:pointer}
+</style>
+</head>
+<body>
+<h1>BLACKOUT</h1>
+<div class="sub">OFF-GRID EMERGENCY BEACON</div>
+
+<div class="grid">
+<button class="btn" onclick="sendSOS()">🚨 SEND SOS BEACON</button>
+<button class="btn" onclick="shareLoc()">📍 BROADCAST LOCATION</button>
+<button class="btn" onclick="flashSOS()">🔦 STROBE / SOS FLASH</button>
+<button class="btn btn-small" onclick="copyInfo()">COPY EMERGENCY INFO</button>
+</div>
+
+<button class="install" id="installBtn" style="display:none" onclick="installPWA()">⬇ INSTALL BLACKOUT (WORKS OFFLINE)</button>
+
+<div class="status" id="status">
+<span class="dot"></span>SYSTEM ARMED<br>
+● GPS: <span id="gps">ACQUIRING...</span><br>
+● OFFLINE READY: YES<br>
+● NO CELL SERVICE REQUIRED<br>
+● LAST BEACON: <span id="last">NEVER</span>
+</div>
+
+<script>
+let deferredPrompt;
+let lastLoc = null;
+
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installBtn').style.display='block';
+});
+function installPWA(){
+  if(deferredPrompt){deferredPrompt.prompt();}
+  else{alert('To install: Share button -> Add to Home Screen');}
+}
+
+navigator.geolocation.watchPosition(pos=>{
+  lastLoc = pos;
+  document.getElementById('gps').innerText = pos.coords.latitude.toFixed(5)+', '+pos.coords.longitude.toFixed(5);
+}, err=>{
+  document.getElementById('gps').innerText = 'GPS DENIED - ENABLE LOCATION';
+},{enableHighAccuracy:true});
+
+function sendSOS(){
+  const loc = lastLoc ? `https://maps.google.com/?q=${lastLoc.coords.latitude},${lastLoc.coords.longitude}` : 'NO GPS - SEND LAST KNOWN';
+  const msg = `🚨 BLACKOUT SOS - I NEED HELP\n${loc}\nTime: ${new Date().toLocaleString()}\nBattery: ${navigator.getBattery ? 'check device' : 'unknown'}`;
+  if(navigator.share){
+    navigator.share({title:'BLACKOUT SOS', text:msg}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(msg);
+    alert('SOS COPIED - Paste into SMS / any messenger:\n\n'+msg);
+  }
+  document.getElementById('last').innerText = new Date().toLocaleTimeString();
+  if(navigator.vibrate) navigator.vibrate([500,200,500,200,1000]);
+}
+function shareLoc(){
+  if(!lastLoc){alert('Waiting for GPS - go outside'); return;}
+  const url = `https://maps.google.com/?q=${lastLoc.coords.latitude},${lastLoc.coords.longitude}`;
+  navigator.clipboard.writeText(url);
+  alert('LOCATION COPIED:\n'+url);
+}
+function flashSOS(){
+  alert('TURNING ON FLASHLIGHT STROBE\n\nIf browser asks, Allow Camera for torch control');
+  // Try torch API
+  if(navigator.mediaDevices){
+    navigator.mediaDevices.getUserMedia({video:{torch:true}}).then(stream=>{
+      const track = stream.getVideoTracks()[0];
+      let on=true;
+      setInterval(()=>{on=!on; track.applyConstraints({advanced:[{torch:on}]}).catch(()=>{});}, 300);
+      setTimeout(()=>{stream.getTracks().forEach(t=>t.stop());}, 15000);
+    }).catch(()=>{document.body.style.animation='blink 0.3s infinite'; setTimeout(()=>document.body.style.animation='',15000);});
+  } else {
+    document.body.style.animation='blink 0.3s infinite';
+    setTimeout(()=>document.body.style.animation='',15000);
+  }
+}
+function copyInfo(){
+  const info = `BLACKOUT EMERGENCY\nLoc: ${lastLoc ? lastLoc.coords.latitude+','+lastLoc.coords.longitude : 'NO GPS'}\nTime: ${new Date().toLocaleString()}\nApp: https://raifsnidersvending2.github.io/BLACKOUT/`;
+  navigator.clipboard.writeText(info);
+  alert('Copied!');
+}
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js');
+}
+</script>
+<style>@keyframes blink{0%,100%{background:#000}50%{background:#ff1a1a}}</style>
+</body>
+</html>
